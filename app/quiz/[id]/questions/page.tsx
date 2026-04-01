@@ -59,7 +59,7 @@ export default function QuizQuestionsPage() {
 				const stored = localStorage.getItem(`quiz_session_${sessionId}`)
 				if (!stored) {
 					console.error('Сессия не найдена')
-					router.push('/')
+					router.push('/quiz/new')
 					return
 				}
 				const data: SessionData = JSON.parse(stored)
@@ -73,7 +73,7 @@ export default function QuizQuestionsPage() {
 				}
 			} catch (error) {
 				console.error('Ошибка загрузки сессии:', error)
-				router.push('/')
+				router.push('/quiz/new')
 			}
 		}
 
@@ -270,7 +270,7 @@ export default function QuizQuestionsPage() {
 
 	return (
 		<div className='min-h-[calc(100vh-56px)] px-4 py-8'>
-			<div className='max-w-2xl mx-auto'>
+			<div className='max-w-3xl mx-auto'>
 				<div className='mb-6'>
 					<div className='flex justify-between text-sm text-gray-600 mb-2'>
 						<span>
@@ -330,9 +330,9 @@ export default function QuizQuestionsPage() {
 						)}
 					</div>
 				) : (
-					<div className='bg-white rounded-2xl shadow p-12 text-center'>
+					<div className='bg-white rounded-lg shadow p-12 text-center'>
 						<div className='animate-spin rounded-full h-10 w-10 border-b-2 border-blue-800 mx-auto'></div>
-						<p className='mt-4 text-gray-500'>Загрузка первого вопроса...</p>
+						<p className='mt-4 text-gray-600'>Загрузка первого вопроса...</p>
 					</div>
 				)}
 

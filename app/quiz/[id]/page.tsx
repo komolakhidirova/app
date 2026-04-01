@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
+import { v4 as uuidv4 } from 'uuid'
 
 interface AnswerRecord {
 	questionNumber: number
@@ -44,10 +45,10 @@ export default function QuizResultsPage() {
 				const data: SessionData = JSON.parse(stored)
 				setSession(data)
 
-				if (!data.completed) {
-					router.push(`/quiz/${sessionId}/questions`)
-					return
-				}
+				// if (!data.completed) {
+				// 	router.push(`/quiz/${sessionId}/questions`)
+				// 	return
+				// }
 			} catch (error) {
 				console.error('Ошибка загрузки сессии:', error)
 				router.push('/')
@@ -60,6 +61,11 @@ export default function QuizResultsPage() {
 	// Запрос диагностики
 	useEffect(() => {
 		if (!session || hasFetched.current) return
+
+		if (!session.completed) {
+			setLoading(false)
+			return
+		}
 
 		const fetchDiagnosis = async () => {
 			try {
@@ -99,10 +105,10 @@ export default function QuizResultsPage() {
 
 	if (loading || !session) {
 		return (
-			<div className=' flex items-center justify-center p-4'>
-				<div className='bg-white rounded-lg shadow p-8 w-full max-w-md text-center'>
-					<div className='animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mx-auto'></div>
-					<p className='mt-4 text-gray-500'>Загрузка результатов...</p>
+			<div className='min-h-screen flex items-center justify-center p-4'>
+				<div className='bg-white rounded-дп shadow p-8 w-full max-w-md text-center'>
+					<div className='animate-spin rounded-full h-10 w-10 border-b-2 border-blue-800 mx-auto'></div>
+					<p className='mt-4 text-gray-600'>Загрузка результатов...</p>
 				</div>
 			</div>
 		)
@@ -112,7 +118,7 @@ export default function QuizResultsPage() {
 
 	return (
 		<main className='container mx-auto px-4 py-8'>
-			<div className='rounded-lg bg-white px-14 py-7 items-center shadow flex justify-between mb-8'>
+			<div className='rounded-lg bg-white px-14 py-7 items-center shadow flex justify-between mb-8 max-w-3xl mx-auto'>
 				<div className='text-start'>
 					<h1 className='text-3xl font-semibold mb-2'>{session.topic}</h1>
 					<p className='text-gray-500 '>Тест завершен</p>
@@ -182,13 +188,29 @@ export default function QuizResultsPage() {
 					<div className='flex mt-6'>
 						<button
 							onClick={() => {
-								// Удаляем старую сессию и создаём новую
-								localStorage.removeItem(`quiz_session_${sessionId}`)
-								router.push(`/quiz/${sessionId}/questions`)
+								if (session.completed) {
+									// Если тест пройден — создаём новую сессию
+									const newSessionId = uuidv4()
+									const newSession = {
+										...session,
+										id: newSessionId,
+										answers: [],
+										currentBatch: 1,
+										completed: false,
+									}
+									localStorage.setItem(
+										`quiz_session_${newSessionId}`,
+										JSON.stringify(newSession)
+									)
+									router.push(`/quiz/${newSessionId}/questions`)
+								} else {
+									// Если тест не пройден — просто переходим к вопросам
+									router.push(`/quiz/${sessionId}/questions`)
+								}
 							}}
 							className='flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition'
 						>
-							Пройти тест
+							{session.completed ? 'Пройти заново' : 'Пройти тест'}
 						</button>
 					</div>
 				</div>

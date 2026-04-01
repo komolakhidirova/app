@@ -32,7 +32,7 @@ export default function HomePage() {
 
 			localStorage.setItem(`quiz_session_${sessionId}`, JSON.stringify(session))
 
-			router.push(`/quiz/${sessionId}/questions`)
+			router.push(`/quiz/${sessionId}`)
 		} catch (error) {
 			console.error('Ошибка создания сессии:', error)
 			setIsLoading(false)
