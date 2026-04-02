@@ -52,17 +52,38 @@ export default function QuizQuestionsPage() {
 	const timeoutRef = useRef<NodeJS.Timeout | null>(null)
 	const hasLoadedBatch = useRef(false)
 
+	// ✅ Функция для получения сессии из общего массива sessions
+	const getSessionFromStorage = (id: string): SessionData | null => {
+		const stored = localStorage.getItem('sessions')
+		if (!stored) return null
+		const sessions: SessionData[] = JSON.parse(stored)
+		return sessions.find(s => s.id === id) || null
+	}
+
+	// ✅ Функция для сохранения сессии в общий массив sessions
+	const saveSessionToStorage = (updatedSession: SessionData) => {
+		const stored = localStorage.getItem('sessions')
+		if (!stored) return
+
+		const sessions: SessionData[] = JSON.parse(stored)
+		const index = sessions.findIndex(s => s.id === updatedSession.id)
+
+		if (index !== -1) {
+			sessions[index] = updatedSession
+			localStorage.setItem('sessions', JSON.stringify(sessions))
+		}
+	}
+
 	// Загрузка сессии из localStorage
 	useEffect(() => {
 		const loadSession = () => {
 			try {
-				const stored = localStorage.getItem(`quiz_session_${sessionId}`)
-				if (!stored) {
+				const data = getSessionFromStorage(sessionId)
+				if (!data) {
 					console.error('Сессия не найдена')
 					router.push('/quiz/new')
 					return
 				}
-				const data: SessionData = JSON.parse(stored)
 				setSession(data)
 				setAnswers(data.answers || [])
 				setBatchNumber(data.currentBatch || 1)
@@ -88,13 +109,10 @@ export default function QuizQuestionsPage() {
 			if (!session) return
 
 			const newSession = { ...session, ...updatedSession }
-			localStorage.setItem(
-				`quiz_session_${sessionId}`,
-				JSON.stringify(newSession)
-			)
+			saveSessionToStorage(newSession)
 			setSession(newSession)
 		},
-		[session, sessionId]
+		[session]
 	)
 
 	// Загрузка пачки вопросов
@@ -257,8 +275,8 @@ export default function QuizQuestionsPage() {
 
 	if (!session) {
 		return (
-			<div className='min-h-screen  flex items-center justify-center '>
-				<div className='bg-white rounded-lg shadow p-12 '>
+			<div className='min-h-screen flex items-center justify-center'>
+				<div className='bg-white rounded-lg shadow p-12'>
 					<div className='animate-spin rounded-full h-10 w-10 border-b-2 border-blue-800 mx-auto'></div>
 					<p className='mt-4 text-gray-500'>Загрузка...</p>
 				</div>

@@ -6,6 +6,15 @@ import { v4 as uuidv4 } from 'uuid'
 
 const TOTAL_QUESTIONS = 10
 
+interface Session {
+	id: string
+	topic: string
+	createdAt: string
+	answers: any[]
+	currentBatch: number
+	completed: boolean
+}
+
 export default function HomePage() {
 	const router = useRouter()
 	const [topic, setTopic] = useState('')
@@ -20,8 +29,8 @@ export default function HomePage() {
 			// Генерируем уникальный ID
 			const sessionId = uuidv4()
 
-			// Создаём сессию в localStorage
-			const session = {
+			// Создаём сессию
+			const newSession: Session = {
 				id: sessionId,
 				topic: topic.trim(),
 				createdAt: new Date().toISOString(),
@@ -30,7 +39,19 @@ export default function HomePage() {
 				completed: false,
 			}
 
-			localStorage.setItem(`quiz_session_${sessionId}`, JSON.stringify(session))
+			// ✅ Получаем существующие сессии из localStorage
+			const existingSessions = localStorage.getItem('sessions')
+			let sessions: Session[] = []
+
+			if (existingSessions) {
+				sessions = JSON.parse(existingSessions)
+			}
+
+			// ✅ Добавляем новую сессию в массив
+			sessions.push(newSession)
+
+			// ✅ Сохраняем обновлённый массив обратно в localStorage
+			localStorage.setItem('sessions', JSON.stringify(sessions))
 
 			router.push(`/quiz/${sessionId}`)
 		} catch (error) {

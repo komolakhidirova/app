@@ -1,9 +1,8 @@
 'use client'
 
 import { Button } from '@/components/ui/button'
-import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 
 interface AnswerRecord {
@@ -31,37 +30,53 @@ export default function QuizResultsPage() {
 	const [diagnosis, setDiagnosis] = useState<string>('')
 	const [loading, setLoading] = useState(true)
 
-	const hasFetched = useRef(false)
+	// ✅ Функция для получения сессии из общего массива sessions
+	const getSessionFromStorage = (id: string): SessionData | null => {
+		const stored = localStorage.getItem('sessions')
+		if (!stored) return null
+		const sessions: SessionData[] = JSON.parse(stored)
+		return sessions.find(s => s.id === id) || null
+	}
+
+	// ✅ Функция для сохранения сессии в общий массив sessions
+	const saveSessionToStorage = (updatedSession: SessionData) => {
+		const stored = localStorage.getItem('sessions')
+		if (!stored) return
+
+		const sessions: SessionData[] = JSON.parse(stored)
+		const index = sessions.findIndex(s => s.id === updatedSession.id)
+
+		if (index !== -1) {
+			sessions[index] = updatedSession
+			localStorage.setItem('sessions', JSON.stringify(sessions))
+		}
+	}
 
 	useEffect(() => {
 		const loadSession = () => {
 			try {
-				const stored = localStorage.getItem(`quiz_session_${sessionId}`)
-				if (!stored) {
+				// ✅ Используем общий массив sessions
+				const data = getSessionFromStorage(sessionId)
+				if (!data) {
 					console.error('Сессия не найдена')
-					router.push('/')
+					router.push('/quiz/new')
 					return
 				}
-				const data: SessionData = JSON.parse(stored)
 				setSession(data)
-
-				// if (!data.completed) {
-				// 	router.push(`/quiz/${sessionId}/questions`)
-				// 	return
-				// }
 			} catch (error) {
 				console.error('Ошибка загрузки сессии:', error)
-				router.push('/')
+				router.push('/quiz/new')
 			}
 		}
 
 		loadSession()
 	}, [sessionId, router])
 
-	// Запрос диагностики
+	// Запрос диагностики ТОЛЬКО если тест завершён
 	useEffect(() => {
-		if (!session || hasFetched.current) return
+		if (!session) return
 
+		// Если тест не завершён — не запрашиваем диагностику
 		if (!session.completed) {
 			setLoading(false)
 			return
@@ -69,8 +84,6 @@ export default function QuizResultsPage() {
 
 		const fetchDiagnosis = async () => {
 			try {
-				hasFetched.current = true
-
 				const res = await fetch('/api/diagnose', {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
@@ -105,10 +118,10 @@ export default function QuizResultsPage() {
 
 	if (loading || !session) {
 		return (
-			<div className='min-h-screen flex items-center justify-center p-4'>
-				<div className='bg-white rounded-дп shadow p-8 w-full max-w-md text-center'>
-					<div className='animate-spin rounded-full h-10 w-10 border-b-2 border-blue-800 mx-auto'></div>
-					<p className='mt-4 text-gray-600'>Загрузка результатов...</p>
+			<div className='flex items-center justify-center p-4'>
+				<div className='bg-white rounded-lg shadow p-8 w-full max-w-md text-center'>
+					<div className='animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mx-auto'></div>
+					<p className='mt-4 text-gray-500'>Загрузка результатов...</p>
 				</div>
 			</div>
 		)
@@ -118,103 +131,147 @@ export default function QuizResultsPage() {
 
 	return (
 		<main className='container mx-auto px-4 py-8'>
-			<div className='rounded-lg bg-white px-14 py-7 items-center shadow flex justify-between mb-8 max-w-3xl mx-auto'>
+			<div className='rounded-lg bg-white px-14 py-7 items-center shadow flex justify-between mb-8'>
 				<div className='text-start'>
 					<h1 className='text-3xl font-semibold mb-2'>{session.topic}</h1>
-					<p className='text-gray-500 '>Тест завершен</p>
+					<p className='text-gray-500'>
+						{session.completed ? 'Тест завершен' : 'Тест не пройден'}
+					</p>
 				</div>
-				<Button className='bg-blue-900 hover:bg-blue-800'>
-					<Link href='/quiz/new'>К сессии</Link>
+				<Button
+					className='bg-blue-900 hover:bg-blue-800'
+					onClick={() => {
+						if (!session.completed) {
+							// Если тест не пройден — переходим к вопросам
+							router.push(`/quiz/${sessionId}/questions`)
+						} else {
+							// Если тест пройден — создаём новую сессию
+							const newSessionId = uuidv4()
+							const newSession: SessionData = {
+								id: newSessionId,
+								topic: session.topic,
+								answers: [],
+								currentBatch: 1,
+								completed: false,
+							}
+							// Добавляем новую сессию в массив sessions
+							const stored = localStorage.getItem('sessions')
+							const sessions: SessionData[] = stored ? JSON.parse(stored) : []
+							sessions.push(newSession)
+							localStorage.setItem('sessions', JSON.stringify(sessions))
+							router.push(`/quiz/${newSessionId}/questions`)
+						}
+					}}
+				>
+					{session.completed ? 'Пройти заново' : 'Пройти тест'}
 				</Button>
 			</div>
 
-			<div className='max-w-3xl mx-auto'>
-				<div className='bg-white rounded-lg shadow p-6'>
-					<div className='mb-6'>
-						<p className='whitespace-pre-wrap'>{diagnosis}</p>
-					</div>
-
-					{weakTopics.length > 0 && (
-						<div className='bg-red-50 p-5 rounded-lg mb-6'>
-							<h3 className='font-semibold mb-2 '>Темы для повторения</h3>
-							<ul className='list-disc list-inside'>
-								{weakTopics.map((topic, i) => (
-									<li key={i}>{topic}</li>
-								))}
-							</ul>
+			{session.completed && (
+				<div className='max-w-3xl mx-auto'>
+					<div className='bg-white rounded-lg shadow p-6'>
+						<div className='mb-6'>
+							<p className='whitespace-pre-wrap'>{diagnosis}</p>
 						</div>
-					)}
 
-					<details className='mt-4'>
-						<summary className='cursor-pointer text-blue-900 hover:text-blue-800 font-medium'>
-							Подробные ответы ({session.answers.length})
-						</summary>
-						<div className='mt-4 space-y-2 max-h-96 overflow-y-auto'>
-							{session.answers.map((a: AnswerRecord, i: number) => (
-								<div
-									key={i}
-									className={`p-3 rounded-lg ${
-										a.isCorrect
-											? 'bg-green-50 border border-green-200'
-											: 'bg-red-50 border border-red-200'
-									}`}
-								>
-									<div className='font-medium text-sm'>
-										Вопрос {a.questionNumber}: {a.questionText}
-									</div>
-									<div className='text-sm mt-1'>
-										<span className='text-gray-500'>Ваш ответ: </span>
-										<span
-											className={
-												a.isCorrect ? 'text-green-700' : 'text-red-700'
-											}
-										>
-											{a.userAnswer}
-										</span>
-										{!a.isCorrect && (
-											<span className='text-gray-500 ml-2'>
-												/ Правильный: {a.correctAnswer}
+						{weakTopics.length > 0 && (
+							<div className='bg-red-50 p-5 rounded-lg mb-6'>
+								<h3 className='font-semibold mb-2'>Темы для повторения</h3>
+								<ul className='list-disc list-inside'>
+									{weakTopics.map((topic, i) => (
+										<li key={i}>{topic}</li>
+									))}
+								</ul>
+							</div>
+						)}
+
+						<details className='mt-4'>
+							<summary className='cursor-pointer text-blue-900 hover:text-blue-800 font-medium'>
+								Подробные ответы ({session.answers.length})
+							</summary>
+							<div className='mt-4 space-y-2 max-h-96 overflow-y-auto'>
+								{session.answers.map((a: AnswerRecord, i: number) => (
+									<div
+										key={i}
+										className={`p-3 rounded-lg ${
+											a.isCorrect
+												? 'bg-green-50 border border-green-200'
+												: 'bg-red-50 border border-red-200'
+										}`}
+									>
+										<div className='font-medium text-sm'>
+											Вопрос {a.questionNumber}: {a.questionText}
+										</div>
+										<div className='text-sm mt-1'>
+											<span className='text-gray-500'>Ваш ответ: </span>
+											<span
+												className={
+													a.isCorrect ? 'text-green-700' : 'text-red-700'
+												}
+											>
+												{a.userAnswer}
 											</span>
-										)}
+											{!a.isCorrect && (
+												<span className='text-gray-500 ml-2'>
+													/ Правильный: {a.correctAnswer}
+												</span>
+											)}
+										</div>
+										<div className='text-xs text-gray-400 mt-1'>
+											Тема: {a.subtopic}
+										</div>
 									</div>
-									<div className='text-xs text-gray-400 mt-1'>
-										Тема: {a.subtopic}
-									</div>
-								</div>
-							))}
-						</div>
-					</details>
+								))}
+							</div>
+						</details>
 
-					<div className='flex mt-6'>
-						<button
-							onClick={() => {
-								if (session.completed) {
-									// Если тест пройден — создаём новую сессию
-									const newSessionId = uuidv4()
-									const newSession = {
-										...session,
-										id: newSessionId,
-										answers: [],
-										currentBatch: 1,
-										completed: false,
+						<div className='flex mt-6'>
+							<button
+								onClick={() => {
+									if (session.completed) {
+										// Если тест пройден — создаём новую сессию
+										const newSessionId = uuidv4()
+										const newSession: SessionData = {
+											...session,
+											id: newSessionId,
+											answers: [],
+											currentBatch: 1,
+											completed: false,
+										}
+										const stored = localStorage.getItem('sessions')
+										const sessions: SessionData[] = stored
+											? JSON.parse(stored)
+											: []
+										sessions.push(newSession)
+										localStorage.setItem('sessions', JSON.stringify(sessions))
+										router.push(`/quiz/${newSessionId}/questions`)
+									} else {
+										// Если тест не пройден — просто переходим к вопросам
+										router.push(`/quiz/${sessionId}/questions`)
 									}
-									localStorage.setItem(
-										`quiz_session_${newSessionId}`,
-										JSON.stringify(newSession)
-									)
-									router.push(`/quiz/${newSessionId}/questions`)
-								} else {
-									// Если тест не пройден — просто переходим к вопросам
-									router.push(`/quiz/${sessionId}/questions`)
-								}
-							}}
-							className='flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition'
-						>
-							{session.completed ? 'Пройти заново' : 'Пройти тест'}
-						</button>
+								}}
+								className='flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition'
+							>
+								{session.completed ? 'Пройти заново' : 'Пройти тест'}
+							</button>
+						</div>
 					</div>
 				</div>
-			</div>
+			)}
+
+			{!session.completed && (
+				<div className='max-w-3xl mx-auto'>
+					<div className='bg-white rounded-lg shadow p-12 text-center'>
+						<p className='text-gray-500 mb-4'>Тест ещё не пройден</p>
+						<Button
+							className='bg-blue-900 hover:bg-blue-800'
+							onClick={() => router.push(`/quiz/${sessionId}/questions`)}
+						>
+							Начать тест
+						</Button>
+					</div>
+				</div>
+			)}
 		</main>
 	)
 }
