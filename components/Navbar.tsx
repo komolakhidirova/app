@@ -1,3 +1,4 @@
+import { Show, SignInButton, UserButton } from '@clerk/nextjs'
 import Link from 'next/link'
 
 const Navbar = () => {
@@ -6,7 +7,12 @@ const Navbar = () => {
 			<Link href='/' className='text-black font-bold'>
 				Тесты
 			</Link>
-			<p>Sign In</p>
+			<Show when='signed-out'>
+				<SignInButton>Войти</SignInButton>
+			</Show>
+			<Show when='signed-in'>
+				<UserButton />
+			</Show>
 		</nav>
 	)
 }

@@ -1,4 +1,5 @@
 import Navbar from '@/components/Navbar'
+import { ClerkProvider } from '@clerk/nextjs'
 import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import './globals.css'
@@ -28,8 +29,10 @@ export default function RootLayout({
 			<body
 				className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen bg-blue-50 font-sans`}
 			>
-				<Navbar />
-				{children}
+				<ClerkProvider appearance={{ variables: { colorPrimary: '#1E40AF' } }}>
+					<Navbar />
+					{children}
+				</ClerkProvider>
 			</body>
 		</html>
 	)
