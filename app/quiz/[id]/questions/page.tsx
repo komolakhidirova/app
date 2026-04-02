@@ -19,11 +19,17 @@ interface AnswerRecord {
 	subtopic: string
 }
 
+interface Attempt {
+	attemptNumber: number
+	answers: AnswerRecord[]
+	completedAt?: string
+}
+
 interface SessionData {
 	id: string
 	topic: string
-	answers: AnswerRecord[]
-	currentBatch: number
+	attempts: Attempt[]
+	currentAttempt: number
 	completed: boolean
 }
 
@@ -50,9 +56,8 @@ export default function QuizQuestionsPage() {
 	const [isWaitingForNext, setIsWaitingForNext] = useState(false)
 
 	const timeoutRef = useRef<NodeJS.Timeout | null>(null)
-	const hasLoadedBatch = useRef(false)
 
-	// ✅ Функция для получения сессии из общего массива sessions
+	// Функция для получения сессии из массива sessions
 	const getSessionFromStorage = (id: string): SessionData | null => {
 		const stored = localStorage.getItem('sessions')
 		if (!stored) return null
@@ -60,21 +65,19 @@ export default function QuizQuestionsPage() {
 		return sessions.find(s => s.id === id) || null
 	}
 
-	// ✅ Функция для сохранения сессии в общий массив sessions
+	// Функция для сохранения сессии
 	const saveSessionToStorage = (updatedSession: SessionData) => {
 		const stored = localStorage.getItem('sessions')
 		if (!stored) return
-
 		const sessions: SessionData[] = JSON.parse(stored)
 		const index = sessions.findIndex(s => s.id === updatedSession.id)
-
 		if (index !== -1) {
 			sessions[index] = updatedSession
 			localStorage.setItem('sessions', JSON.stringify(sessions))
 		}
 	}
 
-	// Загрузка сессии из localStorage
+	// Загрузка сессии
 	useEffect(() => {
 		const loadSession = () => {
 			try {
@@ -85,12 +88,20 @@ export default function QuizQuestionsPage() {
 					return
 				}
 				setSession(data)
-				setAnswers(data.answers || [])
-				setBatchNumber(data.currentBatch || 1)
 
-				// Если сессия завершена, перенаправляем на диагностику
-				if (data.completed) {
-					router.push(`/quiz/${sessionId}`)
+				// Загружаем ответы из ТЕКУЩЕЙ попытки
+				const currentAttempt = data.attempts.find(
+					a => a.attemptNumber === data.currentAttempt
+				)
+				if (currentAttempt && currentAttempt.answers.length > 0) {
+					setAnswers(currentAttempt.answers)
+					setQuestionNumber(currentAttempt.answers.length + 1)
+
+					// Восстанавливаем номер пачки
+					const answeredCount = currentAttempt.answers.length
+					if (answeredCount >= BATCH_SIZE) {
+						setBatchNumber(2)
+					}
 				}
 			} catch (error) {
 				console.error('Ошибка загрузки сессии:', error)
@@ -103,26 +114,48 @@ export default function QuizQuestionsPage() {
 		}
 	}, [sessionId, router])
 
-	// Сохранение сессии в localStorage
-	const saveSession = useCallback(
-		(updatedSession: Partial<SessionData>) => {
+	// Сохранение ответов в ТЕКУЩУЮ попытку
+	const saveCurrentAttempt = useCallback(
+		(newAnswers: AnswerRecord[], isCompleted: boolean = false) => {
 			if (!session) return
 
-			const newSession = { ...session, ...updatedSession }
-			saveSessionToStorage(newSession)
-			setSession(newSession)
+			const updatedAttempts = [...session.attempts]
+			const attemptIndex = updatedAttempts.findIndex(
+				a => a.attemptNumber === session.currentAttempt
+			)
+
+			if (attemptIndex !== -1) {
+				updatedAttempts[attemptIndex] = {
+					...updatedAttempts[attemptIndex],
+					answers: newAnswers,
+					...(isCompleted && { completedAt: new Date().toISOString() }),
+				}
+			}
+
+			const updatedSession = {
+				...session,
+				attempts: updatedAttempts,
+				completed: isCompleted,
+			}
+			saveSessionToStorage(updatedSession)
+			setSession(updatedSession)
 		},
 		[session]
+	)
+
+	// Завершение теста
+	const finishTest = useCallback(
+		(allAnswers: AnswerRecord[]) => {
+			if (!session) return
+			saveCurrentAttempt(allAnswers, true)
+			router.push(`/quiz/${sessionId}`)
+		},
+		[session, sessionId, router, saveCurrentAttempt]
 	)
 
 	// Загрузка пачки вопросов
 	const loadBatch = useCallback(
 		async (batchNum: number, currentAnswers: AnswerRecord[]) => {
-			if (hasLoadedBatch.current && batchNum === 1) {
-				console.log('Первая пачка уже загружается, пропускаем')
-				return
-			}
-
 			setLoading(true)
 			setError('')
 
@@ -154,13 +187,6 @@ export default function QuizQuestionsPage() {
 				setCurrentBatch(data.questions)
 				setCurrentIndexInBatch(0)
 				setCurrentQuestion(data.questions[0])
-
-				if (batchNum === 1) {
-					hasLoadedBatch.current = true
-				}
-
-				// Обновляем текущую пачку в сессии
-				saveSession({ currentBatch: batchNum })
 			} catch (err) {
 				console.error('Ошибка загрузки пачки:', err)
 				setError('Не удалось загрузить вопросы. Попробуйте ещё раз.')
@@ -170,58 +196,51 @@ export default function QuizQuestionsPage() {
 				setLoading(false)
 			}
 		},
-		[session?.topic, saveSession]
+		[session?.topic]
 	)
 
-	// Сохранение ответов и завершение теста
-	const finishTest = useCallback(
-		async (allAnswers: AnswerRecord[]) => {
-			saveSession({
-				answers: allAnswers,
-				completed: true,
-				currentBatch: TOTAL_BATCHES,
-			})
-			setTimeout(() => router.push(`/quiz/${sessionId}`), 1500)
-		},
-		[sessionId, router, saveSession]
-	)
-
-	// Переход к следующему вопросу
-	const moveToNextQuestion = useCallback(
+	// Обработка ответа и переход к следующему вопросу
+	const handleAnswerAndContinue = useCallback(
 		(newAnswers: AnswerRecord[]) => {
 			const nextIndex = currentIndexInBatch + 1
+			const totalAnswered = newAnswers.length
 
+			// Если ответили на все 10 вопросов
+			if (totalAnswered >= TOTAL_QUESTIONS) {
+				finishTest(newAnswers)
+				return
+			}
+
+			// Если есть следующий вопрос в текущей пачке
 			if (nextIndex < currentBatch.length) {
 				setQuestionNumber(prev => prev + 1)
-
 				setCurrentIndexInBatch(nextIndex)
 				setCurrentQuestion(currentBatch[nextIndex])
 				setShowFeedback(false)
 				setFeedback('')
 				setIsWaitingForNext(false)
-			} else {
-				const nextBatch = batchNumber + 1
+				return
+			}
 
-				if (nextBatch <= TOTAL_BATCHES) {
-					setBatchNumber(nextBatch)
-					setCurrentIndexInBatch(0)
-					setCurrentBatch([])
-					setShowFeedback(false)
-					setFeedback('')
-					setIsWaitingForNext(false)
-					loadBatch(nextBatch, newAnswers).then(() => {
-						setQuestionNumber(prev => prev + 1)
-					})
-				} else {
-					finishTest(newAnswers)
-				}
+			// Пачка закончилась, но есть ещё вопросы (5 из 10 отвечено)
+			const nextBatch = batchNumber + 1
+			if (nextBatch <= TOTAL_BATCHES) {
+				setBatchNumber(nextBatch)
+				setCurrentIndexInBatch(0)
+				setCurrentBatch([])
+				setShowFeedback(false)
+				setFeedback('')
+				setIsWaitingForNext(false)
+				loadBatch(nextBatch, newAnswers).then(() => {
+					setQuestionNumber(prev => prev + 1)
+				})
 			}
 		},
 		[currentIndexInBatch, currentBatch, batchNumber, loadBatch, finishTest]
 	)
 
 	// Обработка ответа
-	const handleAnswer = async (selectedAnswer: string) => {
+	const handleAnswer = (selectedAnswer: string) => {
 		if (!currentQuestion || isWaitingForNext) return
 
 		const userAnswerLetter = selectedAnswer.trim().charAt(0).toUpperCase()
@@ -242,29 +261,40 @@ export default function QuizQuestionsPage() {
 
 		const newAnswers = [...answers, newAnswer]
 		setAnswers(newAnswers)
-
-		// Сохраняем ответы в сессию
-		saveSession({ answers: newAnswers })
+		saveCurrentAttempt(newAnswers, false)
 
 		const feedbackMessage = isCorrect
-			? 'Верно!'
-			: `Неправильно. Правильный ответ: ${correctAnswerLetter}`
+			? '✅ Верно!'
+			: `❌ Неправильно. Правильный ответ: ${correctAnswerLetter}`
 		setFeedback(feedbackMessage)
 		setShowFeedback(true)
 		setIsWaitingForNext(true)
 
 		if (timeoutRef.current) clearTimeout(timeoutRef.current)
 		timeoutRef.current = setTimeout(() => {
-			moveToNextQuestion(newAnswers)
+			handleAnswerAndContinue(newAnswers)
 		}, 1500)
 	}
 
 	// Старт теста
 	useEffect(() => {
-		if (session && !session.completed && answers.length === 0) {
+		if (
+			session &&
+			!session.completed &&
+			answers.length === 0 &&
+			!loading &&
+			currentQuestion === null
+		) {
 			loadBatch(batchNumber, [])
 		}
-	}, [session, batchNumber, answers.length, loadBatch])
+	}, [
+		session,
+		batchNumber,
+		answers.length,
+		loading,
+		currentQuestion,
+		loadBatch,
+	])
 
 	// Очистка таймера
 	useEffect(() => {
@@ -292,7 +322,8 @@ export default function QuizQuestionsPage() {
 				<div className='mb-6'>
 					<div className='flex justify-between text-sm text-gray-600 mb-2'>
 						<span>
-							Вопрос {questionNumber} из {TOTAL_QUESTIONS}
+							Попытка {session.currentAttempt} • Вопрос {questionNumber} из{' '}
+							{TOTAL_QUESTIONS}
 						</span>
 					</div>
 					<div className='w-full bg-gray-200 rounded-full h-2.5 overflow-hidden'>
@@ -305,7 +336,7 @@ export default function QuizQuestionsPage() {
 
 				{error && (
 					<div className='mb-4 p-3 bg-red-100 text-red-700 rounded-xl'>
-						{error}
+						⚠️ {error}
 						<button
 							onClick={() => loadBatch(batchNumber, answers)}
 							className='ml-4 underline font-medium'
@@ -319,7 +350,7 @@ export default function QuizQuestionsPage() {
 					<div className='bg-white rounded-2xl shadow p-6'>
 						<div className='flex items-center gap-2 mb-4'>
 							<span className='text-sm px-3 py-1 bg-blue-50 text-blue-800 rounded-full'>
-								{currentQuestion.subtopic}
+								📚 {currentQuestion.subtopic}
 							</span>
 						</div>
 
@@ -343,7 +374,7 @@ export default function QuizQuestionsPage() {
 						{loading && (
 							<div className='mt-4 text-center text-gray-400'>
 								<div className='animate-spin rounded-full h-5 w-5 border-b-2 border-blue-800 inline-block mr-2'></div>
-								Загрузка следующих вопросов...
+								Загрузка...
 							</div>
 						)}
 					</div>
@@ -357,7 +388,7 @@ export default function QuizQuestionsPage() {
 				{showFeedback && feedback && (
 					<div
 						className={`mt-4 p-4 rounded-lg text-center text-lg font-medium ${
-							feedback.includes('Верно')
+							feedback.includes('✅')
 								? 'bg-green-100 text-green-800'
 								: 'bg-red-100 text-red-800'
 						}`}

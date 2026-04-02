@@ -6,12 +6,26 @@ import { v4 as uuidv4 } from 'uuid'
 
 const TOTAL_QUESTIONS = 10
 
-interface Session {
+interface AnswerRecord {
+	questionNumber: number
+	questionText: string
+	userAnswer: string
+	correctAnswer: string
+	isCorrect: boolean
+	subtopic: string
+}
+
+interface Attempt {
+	attemptNumber: number
+	answers: AnswerRecord[]
+	completedAt?: string
+}
+
+interface SessionData {
 	id: string
 	topic: string
-	createdAt: string
-	answers: any[]
-	currentBatch: number
+	attempts: Attempt[]
+	currentAttempt: number
 	completed: boolean
 }
 
@@ -26,31 +40,21 @@ export default function HomePage() {
 		setIsLoading(true)
 
 		try {
-			// Генерируем уникальный ID
 			const sessionId = uuidv4()
 
-			// Создаём сессию
-			const newSession: Session = {
+			// ✅ Создаём сессию БЕЗ попыток
+			const newSession: SessionData = {
 				id: sessionId,
 				topic: topic.trim(),
-				createdAt: new Date().toISOString(),
-				answers: [],
-				currentBatch: 1,
+				attempts: [], // Пустой массив попыток
+				currentAttempt: 1,
 				completed: false,
 			}
 
-			// ✅ Получаем существующие сессии из localStorage
-			const existingSessions = localStorage.getItem('sessions')
-			let sessions: Session[] = []
-
-			if (existingSessions) {
-				sessions = JSON.parse(existingSessions)
-			}
-
-			// ✅ Добавляем новую сессию в массив
+			// Сохраняем в массив sessions
+			const stored = localStorage.getItem('sessions')
+			const sessions: SessionData[] = stored ? JSON.parse(stored) : []
 			sessions.push(newSession)
-
-			// ✅ Сохраняем обновлённый массив обратно в localStorage
 			localStorage.setItem('sessions', JSON.stringify(sessions))
 
 			router.push(`/quiz/${sessionId}`)
