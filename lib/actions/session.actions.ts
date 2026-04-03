@@ -5,6 +5,10 @@ import { auth } from '@clerk/nextjs/server'
 import { revalidatePath } from 'next/cache'
 
 // Типы данных
+interface CreateSession {
+	topic: string
+}
+
 interface AnswerRecord {
 	questionNumber: number
 	questionText: string
@@ -14,12 +18,8 @@ interface AnswerRecord {
 	subtopic: string
 }
 
-interface CreateSessionData {
-	topic: string
-}
-
 interface UpdateSessionData {
-	currentAttempt?: number
+	current_attempt?: number
 	completed?: boolean
 }
 
@@ -40,7 +40,7 @@ interface CreateAnswerData {
 
 // ==================== SESSIONS ====================
 
-export const createSession = async (formData: CreateSessionData) => {
+export const createSession = async (formData: CreateSession) => {
 	const { userId } = await auth()
 	if (!userId) throw new Error('Unauthorized')
 
@@ -62,6 +62,22 @@ export const createSession = async (formData: CreateSessionData) => {
 	return data[0]
 }
 
+export const getAllSessions = async () => {
+	const { userId } = await auth()
+	if (!userId) throw new Error('Unauthorized')
+
+	const supabase = createSupabaseClient()
+
+	const { data, error } = await supabase
+		.from('sessions')
+		.select('*')
+		.eq('user_id', userId)
+
+	if (error) throw new Error(error.message)
+
+	return data
+}
+
 export const getSession = async (sessionId: string) => {
 	const { userId } = await auth()
 	if (!userId) throw new Error('Unauthorized')
@@ -74,24 +90,6 @@ export const getSession = async (sessionId: string) => {
 		.eq('id', sessionId)
 		.eq('user_id', userId)
 		.single()
-
-	if (error) throw new Error(error.message)
-
-	return data
-}
-
-export const getUserSessions = async (limit = 10) => {
-	const { userId } = await auth()
-	if (!userId) throw new Error('Unauthorized')
-
-	const supabase = createSupabaseClient()
-
-	const { data, error } = await supabase
-		.from('sessions')
-		.select('*')
-		.eq('user_id', userId)
-		.order('created_at', { ascending: false })
-		.limit(limit)
 
 	if (error) throw new Error(error.message)
 
@@ -379,7 +377,7 @@ export const getFullSessionData = async (sessionId: string) => {
 
 	if (attemptsError) throw new Error(attemptsError.message)
 
-	// Для каждой попытки получаем ответы
+	// Для каждой попытки получаем ответы и форматируем
 	const attemptsWithAnswers = await Promise.all(
 		attempts.map(async attempt => {
 			const { data: answers, error: answersError } = await supabase
@@ -390,9 +388,20 @@ export const getFullSessionData = async (sessionId: string) => {
 
 			if (answersError) throw new Error(answersError.message)
 
+			// ✅ Форматируем ответы в нужный формат
+			const formattedAnswers = answers.map(a => ({
+				questionNumber: a.question_number,
+				questionText: a.question_text,
+				userAnswer: a.user_answer,
+				correctAnswer: a.correct_answer,
+				isCorrect: a.is_correct,
+				subtopic: a.subtopic,
+			}))
+
 			return {
-				...attempt,
-				answers: answers || [],
+				attemptNumber: attempt.attempt_number,
+				answers: formattedAnswers,
+				completedAt: attempt.completed_at,
 			}
 		})
 	)

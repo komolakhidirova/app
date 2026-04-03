@@ -1,5 +1,12 @@
 'use client'
 
+import {
+	completeAttempt,
+	createAnswersBatch,
+	createAttempt,
+	getFullSessionData,
+	updateSession,
+} from '@/lib/actions/session.actions'
 import { useParams, useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -57,41 +64,16 @@ export default function QuizQuestionsPage() {
 
 	const timeoutRef = useRef<NodeJS.Timeout | null>(null)
 
-	// Функция для получения сессии из массива sessions
-	const getSessionFromStorage = (id: string): SessionData | null => {
-		const stored = localStorage.getItem('sessions')
-		if (!stored) return null
-		const sessions: SessionData[] = JSON.parse(stored)
-		return sessions.find(s => s.id === id) || null
-	}
-
-	// Функция для сохранения сессии
-	const saveSessionToStorage = (updatedSession: SessionData) => {
-		const stored = localStorage.getItem('sessions')
-		if (!stored) return
-		const sessions: SessionData[] = JSON.parse(stored)
-		const index = sessions.findIndex(s => s.id === updatedSession.id)
-		if (index !== -1) {
-			sessions[index] = updatedSession
-			localStorage.setItem('sessions', JSON.stringify(sessions))
-		}
-	}
-
 	// Загрузка сессии
 	useEffect(() => {
-		const loadSession = () => {
+		const loadSession = async () => {
 			try {
-				const data = getSessionFromStorage(sessionId)
-				if (!data) {
-					console.error('Сессия не найдена')
-					router.push('/quiz/new')
-					return
-				}
+				const data = await getFullSessionData(sessionId)
 				setSession(data)
 
 				// Загружаем ответы из ТЕКУЩЕЙ попытки
-				const currentAttempt = data.attempts.find(
-					a => a.attemptNumber === data.currentAttempt
+				const currentAttempt = data.attempts?.find(
+					a => a.attemptNumber === data.current_attempt
 				)
 				if (currentAttempt && currentAttempt.answers.length > 0) {
 					setAnswers(currentAttempt.answers)
@@ -114,43 +96,36 @@ export default function QuizQuestionsPage() {
 		}
 	}, [sessionId, router])
 
-	// Сохранение ответов в ТЕКУЩУЮ попытку
-	const saveCurrentAttempt = useCallback(
-		(newAnswers: AnswerRecord[], isCompleted: boolean = false) => {
-			if (!session) return
+	// Сохранение ответов в БД
+	const saveAnswersToDB = useCallback(
+		async (attemptId: string, allAnswers: AnswerRecord[]) => {
+			const answersData = allAnswers.map(a => ({
+				attemptId,
+				questionNumber: a.questionNumber,
+				questionText: a.questionText,
+				userAnswer: a.userAnswer,
+				correctAnswer: a.correctAnswer,
+				isCorrect: a.isCorrect,
+				subtopic: a.subtopic,
+			}))
 
-			const updatedAttempts = [...session.attempts]
-			const attemptIndex = updatedAttempts.findIndex(
-				a => a.attemptNumber === session.currentAttempt
-			)
-
-			if (attemptIndex !== -1) {
-				updatedAttempts[attemptIndex] = {
-					...updatedAttempts[attemptIndex],
-					answers: newAnswers,
-					...(isCompleted && { completedAt: new Date().toISOString() }),
-				}
-			}
-
-			const updatedSession = {
-				...session,
-				attempts: updatedAttempts,
-				completed: isCompleted,
-			}
-			saveSessionToStorage(updatedSession)
-			setSession(updatedSession)
+			await createAnswersBatch(answersData)
 		},
-		[session]
+		[]
 	)
 
 	// Завершение теста
 	const finishTest = useCallback(
-		(allAnswers: AnswerRecord[]) => {
-			if (!session) return
-			saveCurrentAttempt(allAnswers, true)
+		async (attemptId: string, allAnswers: AnswerRecord[]) => {
+			await saveAnswersToDB(attemptId, allAnswers)
+			await completeAttempt(attemptId)
+			await updateSession(sessionId, {
+				completed: true,
+				current_attempt: session?.currentAttempt || 1,
+			})
 			router.push(`/quiz/${sessionId}`)
 		},
-		[session, sessionId, router, saveCurrentAttempt]
+		[sessionId, session?.currentAttempt, router, saveAnswersToDB]
 	)
 
 	// Загрузка пачки вопросов
@@ -201,13 +176,18 @@ export default function QuizQuestionsPage() {
 
 	// Обработка ответа и переход к следующему вопросу
 	const handleAnswerAndContinue = useCallback(
-		(newAnswers: AnswerRecord[]) => {
+		async (newAnswers: AnswerRecord[]) => {
 			const nextIndex = currentIndexInBatch + 1
 			const totalAnswered = newAnswers.length
 
 			// Если ответили на все 10 вопросов
 			if (totalAnswered >= TOTAL_QUESTIONS) {
-				finishTest(newAnswers)
+				// Создаём новую попытку и сохраняем ответы
+				const attempt = await createAttempt({
+					sessionId,
+					attemptNumber: (session?.attempts.length || 0) + 1,
+				})
+				await finishTest(attempt.id, newAnswers)
 				return
 			}
 
@@ -231,12 +211,19 @@ export default function QuizQuestionsPage() {
 				setShowFeedback(false)
 				setFeedback('')
 				setIsWaitingForNext(false)
-				loadBatch(nextBatch, newAnswers).then(() => {
-					setQuestionNumber(prev => prev + 1)
-				})
+				await loadBatch(nextBatch, newAnswers)
+				setQuestionNumber(prev => prev + 1)
 			}
 		},
-		[currentIndexInBatch, currentBatch, batchNumber, loadBatch, finishTest]
+		[
+			currentIndexInBatch,
+			currentBatch,
+			batchNumber,
+			sessionId,
+			session?.attempts.length,
+			loadBatch,
+			finishTest,
+		]
 	)
 
 	// Обработка ответа
@@ -261,7 +248,6 @@ export default function QuizQuestionsPage() {
 
 		const newAnswers = [...answers, newAnswer]
 		setAnswers(newAnswers)
-		saveCurrentAttempt(newAnswers, false)
 
 		const feedbackMessage = isCorrect
 			? '✅ Верно!'
@@ -322,8 +308,8 @@ export default function QuizQuestionsPage() {
 				<div className='mb-6'>
 					<div className='flex justify-between text-sm text-gray-600 mb-2'>
 						<span>
-							Попытка {session.currentAttempt} • Вопрос {questionNumber} из{' '}
-							{TOTAL_QUESTIONS}
+							Попытка {(session.attempts?.length || 0) + 1} • Вопрос{' '}
+							{questionNumber} из {TOTAL_QUESTIONS}
 						</span>
 					</div>
 					<div className='w-full bg-gray-200 rounded-full h-2.5 overflow-hidden'>

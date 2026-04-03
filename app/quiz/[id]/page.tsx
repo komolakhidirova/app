@@ -1,6 +1,11 @@
 'use client'
 
 import { Button } from '@/components/ui/button'
+import {
+	createAttempt,
+	deleteSession,
+	getFullSessionData,
+} from '@/lib/actions/session.actions'
 import { useParams, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 
@@ -25,6 +30,7 @@ interface SessionData {
 	attempts: Attempt[]
 	currentAttempt: number
 	completed: boolean
+	created_at?: string
 }
 
 export default function QuizResultsPage() {
@@ -36,74 +42,65 @@ export default function QuizResultsPage() {
 	const [loading, setLoading] = useState(true)
 	const [showConfirmDialog, setShowConfirmDialog] = useState(false)
 
-	const getSessionFromStorage = (id: string): SessionData | null => {
-		const stored = localStorage.getItem('sessions')
-		if (!stored) return null
-		const sessions: SessionData[] = JSON.parse(stored)
-		return sessions.find(s => s.id === id) || null
-	}
-
-	const saveSessionToStorage = (updatedSession: SessionData) => {
-		const stored = localStorage.getItem('sessions')
-		if (!stored) return
-		const sessions: SessionData[] = JSON.parse(stored)
-		const index = sessions.findIndex(s => s.id === updatedSession.id)
-		if (index !== -1) {
-			sessions[index] = updatedSession
-			localStorage.setItem('sessions', JSON.stringify(sessions))
-		}
-	}
-
-	const deleteSession = () => {
-		if (!session) return
-
-		const stored = localStorage.getItem('sessions')
-		if (!stored) return
-
-		const sessions: SessionData[] = JSON.parse(stored)
-		const filteredSessions = sessions.filter(s => s.id !== session.id)
-		localStorage.setItem('sessions', JSON.stringify(filteredSessions))
-
-		router.push('/')
-	}
-
-	const handleDeleteClick = () => {
-		console.log('Кнопка нажата, открываем диалог')
-		setShowConfirmDialog(true)
-	}
-
-	const handleConfirmDelete = () => {
-		console.log('Подтверждено удаление')
-		setShowConfirmDialog(false)
-		deleteSession()
-	}
-
-	const handleCancelDelete = () => {
-		console.log('Отмена удаления')
-		setShowConfirmDialog(false)
-	}
-
+	// Загрузка сессии
 	useEffect(() => {
-		const loadSession = () => {
+		const loadSession = async () => {
 			try {
-				const data = getSessionFromStorage(sessionId)
-				if (!data) {
-					console.error('Сессия не найдена')
-					router.push('/quiz/new')
-					return
-				}
+				const data = await getFullSessionData(sessionId)
 				setSession(data)
-				if (data.attempts.length > 0) {
-					setSelectedAttempt(data.currentAttempt)
+				if (data.attempts && data.attempts.length > 0) {
+					setSelectedAttempt(
+						data.current_attempt || data.attempts[0]?.attemptNumber
+					)
 				}
-				setLoading(false)
 			} catch (error) {
 				console.error('Ошибка загрузки сессии:', error)
 				router.push('/quiz/new')
+			} finally {
+				setLoading(false)
 			}
 		}
 		loadSession()
 	}, [sessionId, router])
+
+	const handleDeleteSession = async () => {
+		if (!session) return
+
+		try {
+			await deleteSession(sessionId)
+			router.push('/')
+		} catch (error) {
+			console.error('Ошибка удаления:', error)
+		}
+	}
+
+	const handleDeleteClick = () => {
+		setShowConfirmDialog(true)
+	}
+
+	const handleConfirmDelete = () => {
+		setShowConfirmDialog(false)
+		handleDeleteSession()
+	}
+
+	const handleCancelDelete = () => {
+		setShowConfirmDialog(false)
+	}
+
+	const handleNewAttempt = async () => {
+		if (!session) return
+
+		try {
+			const newAttemptNumber = session.attempts.length + 1
+			await createAttempt({
+				sessionId: session.id,
+				attemptNumber: newAttemptNumber,
+			})
+			router.push(`/quiz/${sessionId}/questions`)
+		} catch (error) {
+			console.error('Ошибка создания попытки:', error)
+		}
+	}
 
 	const getWeakTopics = (answers: AnswerRecord[]) => {
 		const subtopicErrors: Record<string, number> = {}
@@ -113,27 +110,6 @@ export default function QuizResultsPage() {
 			}
 		})
 		return Object.keys(subtopicErrors)
-	}
-
-	// Создание новой попытки
-	const startNewAttempt = () => {
-		if (!session) return
-
-		const newAttemptNumber = session.attempts.length + 1
-		const newAttempt: Attempt = {
-			attemptNumber: newAttemptNumber,
-			answers: [],
-		}
-
-		const updatedSession = {
-			...session,
-			attempts: [...session.attempts, newAttempt],
-			currentAttempt: newAttemptNumber,
-			completed: false,
-		}
-		saveSessionToStorage(updatedSession)
-		setSession(updatedSession)
-		router.push(`/quiz/${sessionId}/questions`)
 	}
 
 	if (loading || !session) {
@@ -147,12 +123,13 @@ export default function QuizResultsPage() {
 		)
 	}
 
-	const hasAttempts = session.attempts.length > 0
+	const hasAttempts = session.attempts && session.attempts.length > 0
 	const currentAttemptData =
 		hasAttempts && selectedAttempt !== null
 			? session.attempts.find(a => a.attemptNumber === selectedAttempt)
 			: null
-	const hasCompletedAttempts = session.attempts.some(a => a.answers.length > 0)
+	const hasCompletedAttempts =
+		session.attempts && session.attempts.some(a => a.answers.length > 0)
 
 	return (
 		<main className='container mx-auto px-4 py-8'>
@@ -160,40 +137,41 @@ export default function QuizResultsPage() {
 				<div className='text-start'>
 					<h1 className='text-3xl font-semibold mb-2'>{session.topic}</h1>
 					<p className='text-gray-500'>
-						{session.attempts.length}{' '}
-						{session.attempts.length === 1 ? 'попытка' : 'попытки'}
+						{session.attempts?.length || 0}{' '}
+						{(session.attempts?.length || 0) === 1 ? 'попытка' : 'попытки'}
 					</p>
 				</div>
 			</div>
 
 			<div className='max-w-3xl mx-auto'>
-				{/* Выбор попытки + кнопка новой попытки в одном ряду */}
+				{/* Выбор попытки + кнопка новой попытки */}
 				<div className='bg-white rounded-lg shadow p-4 mb-6'>
 					<div className='flex items-center gap-2 flex-wrap'>
-						{session.attempts.map(attempt => (
-							<button
-								key={attempt.attemptNumber}
-								onClick={() => setSelectedAttempt(attempt.attemptNumber)}
-								className={`px-4 py-2 rounded-lg transition ${
-									selectedAttempt === attempt.attemptNumber
-										? 'bg-blue-900 text-white'
-										: 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-								}`}
-							>
-								Попытка {attempt.attemptNumber}
-								{attempt.completedAt && ' ✓'}
-							</button>
-						))}
+						{hasAttempts &&
+							session.attempts.map(attempt => (
+								<button
+									key={attempt.attemptNumber}
+									onClick={() => setSelectedAttempt(attempt.attemptNumber)}
+									className={`px-4 py-2 rounded-lg transition ${
+										selectedAttempt === attempt.attemptNumber
+											? 'bg-blue-900 text-white'
+											: 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+									}`}
+								>
+									Попытка {attempt.attemptNumber}
+									{attempt.completedAt && ' ✓'}
+								</button>
+							))}
 						<Button
 							className='bg-blue-900 hover:bg-blue-800'
-							onClick={startNewAttempt}
+							onClick={handleNewAttempt}
 						>
 							+ Новая попытка
 						</Button>
 					</div>
 				</div>
 
-				{/* Отображение результатов — только если есть завершённые попытки */}
+				{/* Отображение результатов */}
 				{hasCompletedAttempts &&
 				currentAttemptData &&
 				currentAttemptData.answers.length > 0 ? (
@@ -256,7 +234,7 @@ export default function QuizResultsPage() {
 						<p className='text-gray-500 mb-4'>Попыток нет</p>
 						<Button
 							className='bg-blue-900 hover:bg-blue-800'
-							onClick={startNewAttempt}
+							onClick={handleNewAttempt}
 						>
 							+ Новая попытка
 						</Button>
@@ -274,9 +252,9 @@ export default function QuizResultsPage() {
 				</div>
 			</div>
 
-			{/* Диалог подтверждения удаления — с обычными кнопками */}
+			{/* Диалог подтверждения удаления */}
 			{showConfirmDialog && (
-				<div className='fixed inset-0 bg-blue-50 flex items-center justify-center z-50'>
+				<div className='fixed inset-0 bg-black/50 flex items-center justify-center z-50'>
 					<div className='bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4'>
 						<h3 className='text-xl font-semibold mb-4'>
 							Подтверждение удаления
