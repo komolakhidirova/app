@@ -1,0 +1,96 @@
+[
+	{
+		"id": "97d5e5bc-1561-4746-9790-7678e5524367",
+		"topic": "bts",
+		"attempts": [
+			{
+				"attemptNumber": 1,
+				"answers": [
+					{
+						"questionNumber": 1,
+						"questionText": "Когда состоялся официальный дебют группы BTS?",
+						"userAnswer": "B",
+						"correctAnswer": "B",
+						"isCorrect": true,
+						"subtopic": "История группы"
+					},
+					{
+						"questionNumber": 2,
+						"questionText": "Сколько участников в группе BTS?",
+						"userAnswer": "C",
+						"correctAnswer": "C",
+						"isCorrect": true,
+						"subtopic": "Состав группы"
+					},
+					{
+						"questionNumber": 3,
+						"questionText": "Как называется официальный фандом группы BTS?",
+						"userAnswer": "C",
+						"correctAnswer": "C",
+						"isCorrect": true,
+						"subtopic": "Фандом"
+					},
+					{
+						"questionNumber": 4,
+						"questionText": "Под каким агентством дебютировала группа BTS (ныне HYBE Corporation)?",
+						"userAnswer": "D",
+						"correctAnswer": "D",
+						"isCorrect": true,
+						"subtopic": "Агентство"
+					},
+					{
+						"questionNumber": 5,
+						"questionText": "Что означает аббревиатура 'BTS' в полном корейском названии 'Bangtan Sonyeondan'?",
+						"userAnswer": "C",
+						"correctAnswer": "C",
+						"isCorrect": true,
+						"subtopic": "Название группы"
+					},
+					{
+						"questionNumber": 6,
+						"questionText": "Какой из этих участников BTS известен под сценическим псевдонимом 'J-Hope'?",
+						"userAnswer": "A",
+						"correctAnswer": "A",
+						"isCorrect": true,
+						"subtopic": "Участники группы"
+					},
+					{
+						"questionNumber": 7,
+						"questionText": "Какой из этих хитов BTS не является частью серии альбомов 'Love Yourself'?",
+						"userAnswer": "D",
+						"correctAnswer": "D",
+						"isCorrect": true,
+						"subtopic": "Дискография"
+					},
+					{
+						"questionNumber": 8,
+						"questionText": "Какая песня BTS стала их первой, возглавившей чарт Billboard Hot 100 в США?",
+						"userAnswer": "A",
+						"correctAnswer": "A",
+						"isCorrect": true,
+						"subtopic": "Достижения"
+					},
+					{
+						"questionNumber": 9,
+						"questionText": "Как называется мультяшная франшиза персонажей, созданная участниками BTS в сотрудничестве с LINE FRIENDS?",
+						"userAnswer": "A",
+						"correctAnswer": "A",
+						"isCorrect": true,
+						"subtopic": "Проекты"
+					},
+					{
+						"questionNumber": 10,
+						"questionText": "Кто из участников BTS выпустил свой первый официальный сольный альбом 'Jack In The Box' в 2022 году?",
+						"userAnswer": "A",
+						"correctAnswer": "B",
+						"isCorrect": false,
+						"subtopic": "Сольная деятельность"
+					}
+				],
+				"completedAt": "2026-04-03T11:27:15.643Z"
+			}
+		],
+		"currentAttempt": 1,
+		"completed": true
+	}
+]
