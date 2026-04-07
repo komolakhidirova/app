@@ -51,7 +51,7 @@ export const createSession = async (formData: CreateSession) => {
 		.insert({
 			user_id: userId,
 			topic: formData.topic,
-			current_attempt: 1,
+			current_attempt: 0,
 			completed: false,
 		})
 		.select()
