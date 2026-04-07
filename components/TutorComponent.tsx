@@ -1,7 +1,6 @@
 'use client'
 
 import soundwaves from '@/constants/soundwaves.json'
-import { addToSessionHistory } from '@/lib/actions/session.actions'
 import { cn, configureAssistant } from '@/lib/utils'
 import { vapi } from '@/lib/vapi.sdk'
 import Lottie, { LottieRefCurrentProps } from 'lottie-react'
@@ -46,7 +45,6 @@ const TutorComponent = ({ sessionId, topic, userName, userImage }: Props) => {
 
 		const onCallEnd = () => {
 			setCallStatus(CallStatus.FINISHED)
-			addToSessionHistory(sessionId)
 		}
 
 		const onMessage = (message: Message) => {
