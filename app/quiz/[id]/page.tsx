@@ -2,7 +2,6 @@
 
 import { Button } from '@/components/ui/button'
 import {
-	createAttempt,
 	deleteSession,
 	getFullSessionData,
 } from '@/lib/actions/session.actions'
@@ -90,16 +89,7 @@ export default function QuizResultsPage() {
 	const handleNewAttempt = async () => {
 		if (!session) return
 
-		try {
-			const newAttemptNumber = session.attempts.length + 1
-			await createAttempt({
-				sessionId: session.id,
-				attemptNumber: newAttemptNumber,
-			})
-			router.push(`/quiz/${sessionId}/questions`)
-		} catch (error) {
-			console.error('Ошибка создания попытки:', error)
-		}
+		router.push(`/quiz/${sessionId}/questions`)
 	}
 
 	const getWeakTopics = (answers: AnswerRecord[]) => {
