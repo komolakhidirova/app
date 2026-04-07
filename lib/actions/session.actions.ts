@@ -358,7 +358,6 @@ export const getFullSessionData = async (sessionId: string) => {
 
 	const supabase = createSupabaseClient()
 
-	// Получаем сессию
 	const { data: session, error: sessionError } = await supabase
 		.from('sessions')
 		.select('*')
@@ -368,16 +367,14 @@ export const getFullSessionData = async (sessionId: string) => {
 
 	if (sessionError) throw new Error(sessionError.message)
 
-	// Получаем все попытки
 	const { data: attempts, error: attemptsError } = await supabase
 		.from('attempts')
-		.select('*')
+		.select('id, attempt_number, completed_at') // ✅ ОБЯЗАТЕЛЬНО ВКЛЮЧИТЬ id
 		.eq('session_id', sessionId)
 		.order('attempt_number', { ascending: true })
 
 	if (attemptsError) throw new Error(attemptsError.message)
 
-	// Для каждой попытки получаем ответы и форматируем
 	const attemptsWithAnswers = await Promise.all(
 		attempts.map(async attempt => {
 			const { data: answers, error: answersError } = await supabase
@@ -388,7 +385,6 @@ export const getFullSessionData = async (sessionId: string) => {
 
 			if (answersError) throw new Error(answersError.message)
 
-			// ✅ Форматируем ответы в нужный формат
 			const formattedAnswers = answers.map(a => ({
 				questionNumber: a.question_number,
 				questionText: a.question_text,
@@ -399,6 +395,7 @@ export const getFullSessionData = async (sessionId: string) => {
 			}))
 
 			return {
+				id: attempt.id, // ✅ ОБЯЗАТЕЛЬНО добавить id
 				attemptNumber: attempt.attempt_number,
 				answers: formattedAnswers,
 				completedAt: attempt.completed_at,

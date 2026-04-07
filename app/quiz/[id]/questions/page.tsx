@@ -3,7 +3,6 @@
 import {
 	completeAttempt,
 	createAnswersBatch,
-	createAttempt,
 	getFullSessionData,
 	updateSession,
 } from '@/lib/actions/session.actions'
@@ -27,6 +26,7 @@ interface AnswerRecord {
 }
 
 interface Attempt {
+	id: string
 	attemptNumber: number
 	answers: AnswerRecord[]
 	completedAt?: string
@@ -36,7 +36,7 @@ interface SessionData {
 	id: string
 	topic: string
 	attempts: Attempt[]
-	currentAttempt: number
+	current_attempt: number
 	completed: boolean
 }
 
@@ -61,40 +61,10 @@ export default function QuizQuestionsPage() {
 	const [error, setError] = useState('')
 	const [showFeedback, setShowFeedback] = useState(false)
 	const [isWaitingForNext, setIsWaitingForNext] = useState(false)
+	const [currentAttemptId, setCurrentAttemptId] = useState<string | null>(null) // ✅ ДОБАВИТЬ
 
 	const timeoutRef = useRef<NodeJS.Timeout | null>(null)
-
-	// Загрузка сессии
-	useEffect(() => {
-		const loadSession = async () => {
-			try {
-				const data = await getFullSessionData(sessionId)
-				setSession(data)
-
-				// Загружаем ответы из ТЕКУЩЕЙ попытки
-				const currentAttempt = data.attempts?.find(
-					a => a.attemptNumber === data.current_attempt
-				)
-				if (currentAttempt && currentAttempt.answers.length > 0) {
-					setAnswers(currentAttempt.answers)
-					setQuestionNumber(currentAttempt.answers.length + 1)
-
-					// Восстанавливаем номер пачки
-					const answeredCount = currentAttempt.answers.length
-					if (answeredCount >= BATCH_SIZE) {
-						setBatchNumber(2)
-					}
-				}
-			} catch (error) {
-				console.error('Ошибка загрузки сессии:', error)
-				router.push('/quiz/new')
-			}
-		}
-
-		if (sessionId) {
-			loadSession()
-		}
-	}, [sessionId, router])
+	const initialized = useRef(false)
 
 	// Сохранение ответов в БД
 	const saveAnswersToDB = useCallback(
@@ -108,7 +78,6 @@ export default function QuizQuestionsPage() {
 				isCorrect: a.isCorrect,
 				subtopic: a.subtopic,
 			}))
-
 			await createAnswersBatch(answersData)
 		},
 		[]
@@ -116,16 +85,18 @@ export default function QuizQuestionsPage() {
 
 	// Завершение теста
 	const finishTest = useCallback(
-		async (attemptId: string, allAnswers: AnswerRecord[]) => {
-			await saveAnswersToDB(attemptId, allAnswers)
-			await completeAttempt(attemptId)
-			await updateSession(sessionId, {
-				completed: true,
-				current_attempt: session?.currentAttempt || 1,
-			})
+		async (allAnswers: AnswerRecord[]) => {
+			if (!currentAttemptId) {
+				console.error('Нет ID попытки')
+				router.push(`/quiz/${sessionId}`)
+				return
+			}
+			await saveAnswersToDB(currentAttemptId, allAnswers)
+			await completeAttempt(currentAttemptId)
+			await updateSession(sessionId, { completed: true })
 			router.push(`/quiz/${sessionId}`)
 		},
-		[sessionId, session?.currentAttempt, router, saveAnswersToDB]
+		[sessionId, currentAttemptId, router, saveAnswersToDB]
 	)
 
 	// Загрузка пачки вопросов
@@ -180,18 +151,11 @@ export default function QuizQuestionsPage() {
 			const nextIndex = currentIndexInBatch + 1
 			const totalAnswered = newAnswers.length
 
-			// Если ответили на все 10 вопросов
 			if (totalAnswered >= TOTAL_QUESTIONS) {
-				// Создаём новую попытку и сохраняем ответы
-				const attempt = await createAttempt({
-					sessionId,
-					attemptNumber: (session?.attempts.length || 0) + 1,
-				})
-				await finishTest(attempt.id, newAnswers)
+				await finishTest(newAnswers)
 				return
 			}
 
-			// Если есть следующий вопрос в текущей пачке
 			if (nextIndex < currentBatch.length) {
 				setQuestionNumber(prev => prev + 1)
 				setCurrentIndexInBatch(nextIndex)
@@ -202,7 +166,6 @@ export default function QuizQuestionsPage() {
 				return
 			}
 
-			// Пачка закончилась, но есть ещё вопросы (5 из 10 отвечено)
 			const nextBatch = batchNumber + 1
 			if (nextBatch <= TOTAL_BATCHES) {
 				setBatchNumber(nextBatch)
@@ -215,15 +178,7 @@ export default function QuizQuestionsPage() {
 				setQuestionNumber(prev => prev + 1)
 			}
 		},
-		[
-			currentIndexInBatch,
-			currentBatch,
-			batchNumber,
-			sessionId,
-			session?.attempts.length,
-			loadBatch,
-			finishTest,
-		]
+		[currentIndexInBatch, currentBatch, batchNumber, loadBatch, finishTest]
 	)
 
 	// Обработка ответа
@@ -262,25 +217,53 @@ export default function QuizQuestionsPage() {
 		}, 1500)
 	}
 
-	// Старт теста
+	// Загрузка сессии и получение активной попытки
 	useEffect(() => {
-		if (
-			session &&
-			!session.completed &&
-			answers.length === 0 &&
-			!loading &&
-			currentQuestion === null
-		) {
-			loadBatch(batchNumber, [])
+		if (initialized.current) return
+		initialized.current = true
+
+		const loadSession = async () => {
+			try {
+				const data = await getFullSessionData(sessionId)
+				console.log('📦 Данные сессии:', data)
+				setSession(data)
+
+				if (!data.attempts || data.attempts.length === 0) {
+					router.push(`/quiz/${sessionId}`)
+					return
+				}
+
+				// Находим активную (незавершённую) попытку
+				const activeAttempt = data.attempts.find(a => !a.completedAt)
+				console.log('🎯 Активная попытка:', activeAttempt)
+
+				if (activeAttempt) {
+					// ✅ СОХРАНЯЕМ ID ПОПЫТКИ
+					setCurrentAttemptId(activeAttempt.id)
+					console.log('✅ currentAttemptId установлен:', activeAttempt.id)
+
+					if (activeAttempt.answers && activeAttempt.answers.length > 0) {
+						setAnswers(activeAttempt.answers)
+						setQuestionNumber(activeAttempt.answers.length + 1)
+						const answeredCount = activeAttempt.answers.length
+						if (answeredCount >= BATCH_SIZE) {
+							setBatchNumber(2)
+						}
+					} else {
+						// Загружаем первую пачку
+						await loadBatch(1, [])
+					}
+				} else {
+					router.push(`/quiz/${sessionId}`)
+				}
+			} catch (error) {
+				console.error('Ошибка загрузки сессии:', error)
+				router.push('/quiz/new')
+			}
 		}
-	}, [
-		session,
-		batchNumber,
-		answers.length,
-		loading,
-		currentQuestion,
-		loadBatch,
-	])
+
+		loadSession()
+	}, [sessionId, router])
 
 	// Очистка таймера
 	useEffect(() => {
@@ -289,7 +272,7 @@ export default function QuizQuestionsPage() {
 		}
 	}, [])
 
-	if (!session) {
+	if (!session || !currentAttemptId) {
 		return (
 			<div className='min-h-screen flex items-center justify-center'>
 				<div className='bg-white rounded-lg shadow p-12'>
@@ -308,8 +291,8 @@ export default function QuizQuestionsPage() {
 				<div className='mb-6'>
 					<div className='flex justify-between text-sm text-gray-600 mb-2'>
 						<span>
-							Попытка {(session.attempts?.length || 0) + 1} • Вопрос{' '}
-							{questionNumber} из {TOTAL_QUESTIONS}
+							Попытка {session.current_attempt} • Вопрос {questionNumber} из{' '}
+							{TOTAL_QUESTIONS}
 						</span>
 					</div>
 					<div className='w-full bg-gray-200 rounded-full h-2.5 overflow-hidden'>
