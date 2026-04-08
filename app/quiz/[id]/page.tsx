@@ -1,6 +1,5 @@
 'use client'
 
-import { Button } from '@/components/ui/button'
 import {
 	createAttempt,
 	deleteSession,
@@ -19,6 +18,7 @@ interface AnswerRecord {
 }
 
 interface Attempt {
+	id: string
 	attemptNumber: number
 	answers: AnswerRecord[]
 	completedAt?: string
@@ -28,7 +28,7 @@ interface SessionData {
 	id: string
 	topic: string
 	attempts: Attempt[]
-	currentAttempt: number
+	current_attempt: number
 	completed: boolean
 	created_at?: string
 }
@@ -141,10 +141,16 @@ export default function QuizResultsPage() {
 						{(session.attempts?.length || 0) === 1 ? 'попытка' : 'попытки'}
 					</p>
 				</div>
+
+				<button
+					className='bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition'
+					onClick={() => router.push(`/quiz/${sessionId}/tutor`)}
+				>
+					🎓 Тьютор
+				</button>
 			</div>
 
 			<div className='max-w-3xl mx-auto'>
-				{/* Выбор попытки + кнопка новой попытки */}
 				<div className='bg-white rounded-lg shadow p-4 mb-6'>
 					<div className='flex items-center gap-2 flex-wrap'>
 						{hasAttempts &&
@@ -162,12 +168,12 @@ export default function QuizResultsPage() {
 									{attempt.completedAt && ' ✓'}
 								</button>
 							))}
-						<Button
-							className='bg-blue-900 hover:bg-blue-800'
+						<button
+							className='bg-blue-900 hover:bg-blue-800 text-white px-4 py-2 rounded-lg transition'
 							onClick={handleNewAttempt}
 						>
 							+ Новая попытка
-						</Button>
+						</button>
 					</div>
 				</div>
 
@@ -232,12 +238,12 @@ export default function QuizResultsPage() {
 				) : (
 					<div className='bg-white rounded-lg shadow p-12 text-center'>
 						<p className='text-gray-500 mb-4'>Попыток нет</p>
-						<Button
-							className='bg-blue-900 hover:bg-blue-800'
+						<button
+							className='bg-blue-900 hover:bg-blue-800 text-white px-4 py-2 rounded-lg transition'
 							onClick={handleNewAttempt}
 						>
 							+ Новая попытка
-						</Button>
+						</button>
 					</div>
 				)}
 

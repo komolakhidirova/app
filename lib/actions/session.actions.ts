@@ -72,6 +72,7 @@ export const getAllSessions = async () => {
 		.from('sessions')
 		.select('*')
 		.eq('user_id', userId)
+		.order('created_at', { ascending: false })
 
 	if (error) throw new Error(error.message)
 
@@ -167,6 +168,15 @@ export const createAttempt = async (formData: CreateAttemptData) => {
 		.single()
 
 	if (error) throw new Error(error.message)
+
+	const { error: updateError } = await supabase
+		.from('sessions')
+		.update({ current_attempt: formData.attemptNumber })
+		.eq('id', formData.sessionId)
+
+	if (updateError) {
+		console.error('Ошибка обновления current_attempt:', updateError)
+	}
 
 	return data
 }
