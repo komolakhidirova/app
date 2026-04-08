@@ -61,7 +61,7 @@ export default function QuizQuestionsPage() {
 	const [error, setError] = useState('')
 	const [showFeedback, setShowFeedback] = useState(false)
 	const [isWaitingForNext, setIsWaitingForNext] = useState(false)
-	const [currentAttemptId, setCurrentAttemptId] = useState<string | null>(null) // ✅ ДОБАВИТЬ
+	const [currentAttemptId, setCurrentAttemptId] = useState<string | null>(null)
 
 	const timeoutRef = useRef<NodeJS.Timeout | null>(null)
 	const initialized = useRef(false)
@@ -99,9 +99,13 @@ export default function QuizQuestionsPage() {
 		[sessionId, currentAttemptId, router, saveAnswersToDB]
 	)
 
-	// Загрузка пачки вопросов
+	// Загрузка пачки вопросов — с явной передачей темы
 	const loadBatch = useCallback(
-		async (batchNum: number, currentAnswers: AnswerRecord[]) => {
+		async (
+			batchNum: number,
+			currentAnswers: AnswerRecord[],
+			topicParam: string
+		) => {
 			setLoading(true)
 			setError('')
 
@@ -112,7 +116,7 @@ export default function QuizQuestionsPage() {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
 					body: JSON.stringify({
-						topic: session?.topic,
+						topic: topicParam,
 						batchNumber: batchNum,
 						totalBatches: TOTAL_BATCHES,
 						askedQuestions: askedTexts,
@@ -142,7 +146,7 @@ export default function QuizQuestionsPage() {
 				setLoading(false)
 			}
 		},
-		[session?.topic]
+		[]
 	)
 
 	// Обработка ответа и переход к следующему вопросу
@@ -174,11 +178,18 @@ export default function QuizQuestionsPage() {
 				setShowFeedback(false)
 				setFeedback('')
 				setIsWaitingForNext(false)
-				await loadBatch(nextBatch, newAnswers)
+				await loadBatch(nextBatch, newAnswers, session?.topic || '')
 				setQuestionNumber(prev => prev + 1)
 			}
 		},
-		[currentIndexInBatch, currentBatch, batchNumber, loadBatch, finishTest]
+		[
+			currentIndexInBatch,
+			currentBatch,
+			batchNumber,
+			session?.topic,
+			loadBatch,
+			finishTest,
+		]
 	)
 
 	// Обработка ответа
@@ -238,7 +249,6 @@ export default function QuizQuestionsPage() {
 				console.log('🎯 Активная попытка:', activeAttempt)
 
 				if (activeAttempt) {
-					// ✅ СОХРАНЯЕМ ID ПОПЫТКИ
 					setCurrentAttemptId(activeAttempt.id)
 					console.log('✅ currentAttemptId установлен:', activeAttempt.id)
 
@@ -250,8 +260,8 @@ export default function QuizQuestionsPage() {
 							setBatchNumber(2)
 						}
 					} else {
-						// Загружаем первую пачку
-						await loadBatch(1, [])
+						// Загружаем первую пачку — передаём тему из data
+						await loadBatch(1, [], data.topic)
 					}
 				} else {
 					router.push(`/quiz/${sessionId}`)
@@ -263,7 +273,7 @@ export default function QuizQuestionsPage() {
 		}
 
 		loadSession()
-	}, [sessionId, router])
+	}, [sessionId, router, loadBatch])
 
 	// Очистка таймера
 	useEffect(() => {
@@ -307,7 +317,9 @@ export default function QuizQuestionsPage() {
 					<div className='mb-4 p-3 bg-red-100 text-red-700 rounded-xl'>
 						⚠️ {error}
 						<button
-							onClick={() => loadBatch(batchNumber, answers)}
+							onClick={() =>
+								loadBatch(batchNumber, answers, session?.topic || '')
+							}
 							className='ml-4 underline font-medium'
 						>
 							Повторить
