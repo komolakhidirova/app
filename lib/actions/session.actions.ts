@@ -64,7 +64,7 @@ export const createSession = async (formData: CreateSession) => {
 
 export const getAllSessions = async () => {
 	const { userId } = await auth()
-	if (!userId) throw new Error('Unauthorized')
+	// if (!userId) throw new Error('Unauthorized')
 
 	const supabase = createSupabaseClient()
 

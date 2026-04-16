@@ -146,7 +146,7 @@ export default function QuizResultsPage() {
 					className='bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition'
 					onClick={() => router.push(`/quiz/${sessionId}/tutor`)}
 				>
-					🎓 Тьютор
+					Работа над ошибками
 				</button>
 			</div>
 
